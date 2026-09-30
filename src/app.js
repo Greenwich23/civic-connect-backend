@@ -40,7 +40,7 @@ if (process.env.NODE_ENV === "development") {
 
 // ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
-  res.json({ success: true, message: "Apex API is running" });
+  res.json({ success: true, message: "Civic pulse API is running" });
 });
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
