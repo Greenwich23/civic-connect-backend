@@ -6,7 +6,9 @@ const router = express.Router();
 
 router.use(protect, authorize("admin"));
 
+router.get("/", communityManagementController.getAllCommunities);
 router.post("/", communityManagementController.createCommunity);
+router.get("/:id", communityManagementController.getCommunityById);
 router.patch("/:id", communityManagementController.updateCommunity);
 
 export default router;

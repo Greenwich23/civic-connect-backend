@@ -3,21 +3,33 @@ import User from "../../models/User.js";
 import asyncHandler from "../../utils/asyncHandler.js";
 import { errorResponse } from "../../utils/apiResponse.js";
 
-const ROLES = User.schema.path("role").enumValues;
+// This controller only ever deals with citizen/representative accounts.
+// Admin-tier accounts (admin, super_admin) are managed exclusively through
+// adminManagement.controller.js, which only a super_admin can reach — a
+// regular admin can't see or act on another admin through here even if
+// they guess an id or pass ?role=admin.
+const MANAGEABLE_ROLES = ["citizen", "representative"];
+const ADMIN_ROLES = ["admin", "super_admin"];
 
-// @desc   List users (paginated, filterable by role and isActive)
-// @route  GET /api/admin/users?role=citizen&isActive=true&page=1&limit=20
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// @desc   List users (paginated, filterable by role/isActive, searchable by name/email)
+// @route  GET /api/admin/users?role=citizen&isActive=true&search=jane&page=1&limit=20
 export const getAllUsers = asyncHandler(async (req, res) => {
-  const { role, isActive } = req.query;
+  const { role, isActive, search } = req.query;
 
   const page = Math.max(parseInt(req.query.page) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
 
-  const filter = {};
+  const filter = { role: { $in: MANAGEABLE_ROLES } };
 
   if (role) {
-    if (!ROLES.includes(role)) {
-      return errorResponse(res, `role must be one of: ${ROLES.join(", ")}`, 400);
+    if (!MANAGEABLE_ROLES.includes(role)) {
+      return errorResponse(
+        res,
+        `role must be one of: ${MANAGEABLE_ROLES.join(", ")}`,
+        400,
+      );
     }
     filter.role = role;
   }
@@ -27,6 +39,11 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       return errorResponse(res, 'isActive must be "true" or "false"', 400);
     }
     filter.isActive = isActive === "true";
+  }
+
+  if (search?.trim()) {
+    const pattern = { $regex: escapeRegex(search.trim()), $options: "i" };
+    filter.$or = [{ name: pattern }, { email: pattern }];
   }
 
   const [users, total] = await Promise.all([
@@ -61,7 +78,7 @@ export const getUserById = asyncHandler(async (req, res) => {
     .select("-password")
     .populate("community", "name level");
 
-  if (!user) {
+  if (!user || ADMIN_ROLES.includes(user.role)) {
     return errorResponse(res, "User not found", 404);
   }
 
@@ -81,7 +98,7 @@ const setUserActive = (isActive) =>
 
     const user = await User.findById(req.params.id).select("-password");
 
-    if (!user) {
+    if (!user || ADMIN_ROLES.includes(user.role)) {
       return errorResponse(res, "User not found", 404);
     }
 

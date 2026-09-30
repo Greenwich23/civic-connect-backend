@@ -6,6 +6,7 @@ import asyncHandler from "../../utils/asyncHandler.js";
 import { errorResponse } from "../../utils/apiResponse.js";
 import { decrypt } from "../../utils/encryption.js";
 import { notifyUser } from "../../utils/notify.js";
+import { revokeRepresentativeStatus } from "../../utils/representativeActions.js";
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -51,9 +52,9 @@ export const getApplicationById = asyncHandler(async (req, res) => {
 
 // @desc   Approve or reject an application
 // @route  PATCH /api/admin/representative-applications/:id/review
-// @body   { decision: "approved" | "rejected", reviewNote }
+// @body   { decision: "approved" | "rejected", reviewNote, grantOfficialVerification? }
 export const reviewApplication = asyncHandler(async (req, res) => {
-  const { decision, reviewNote } = req.body;
+  const { decision, reviewNote, grantOfficialVerification } = req.body;
 
   if (!mongoose.isValidObjectId(req.params.id)) {
     return errorResponse(res, "Invalid application id", 400);
@@ -84,6 +85,8 @@ export const reviewApplication = asyncHandler(async (req, res) => {
   }
 
   let communityName = application.proposedCommunityName;
+  let grantedOfficialBadge = false;
+  let rejectedSiblings = [];
 
   if (decision === "approved") {
     // Never turn an admin account into a representative
@@ -132,6 +135,40 @@ export const reviewApplication = asyncHandler(async (req, res) => {
 
     communityName = community.name;
 
+    // Multiple citizens can apply for the same seat (existing community) or
+    // propose the same new community — approving one here means every other
+    // still-pending applicant for that same community lost out, so they're
+    // auto-rejected rather than left to rot as zombie "pending" rows.
+    const siblingFilter =
+      application.applicationType === "found_new_community"
+        ? {
+            applicationType: "found_new_community",
+            proposedCommunityName: application.proposedCommunityName,
+            proposedParent: application.proposedParent,
+          }
+        : { applicationType: "represent_existing", community: community._id };
+
+    const siblings = await RepresentativeApplication.find({
+      ...siblingFilter,
+      _id: { $ne: application._id },
+      status: "pending",
+    });
+
+    if (siblings.length) {
+      await RepresentativeApplication.updateMany(
+        { _id: { $in: siblings.map((s) => s._id) } },
+        {
+          $set: {
+            status: "rejected",
+            reviewedBy: req.user._id,
+            reviewNote: `Another applicant was selected to represent ${communityName}.`,
+            reviewedAt: new Date(),
+          },
+        },
+      );
+      rejectedSiblings = siblings;
+    }
+
     // Step down whoever currently represents this community
     await User.updateMany(
       {
@@ -144,16 +181,30 @@ export const reviewApplication = asyncHandler(async (req, res) => {
         $set: {
           role: "citizen",
           "representativeInfo.isActive": false,
+          "representativeInfo.isVerifiedOfficial": false,
         },
       },
     );
 
-    // Promote the applicant
+    // Only grant the badge if the applicant actually claimed official status
+    // AND the admin has reviewed the document and chosen to confirm it —
+    // claiming it is never enough on its own.
+    const isVerifiedOfficial =
+      application.claimsOfficialStatus && !!grantOfficialVerification;
+    grantedOfficialBadge = isVerifiedOfficial;
+
+    // Promote the applicant — community mirrors the plain `community` field
+    // every citizen has, so the app's normal citizen-facing screens (home
+    // feed, header, report-issue defaults) reflect the community they now
+    // represent, not whatever community they belonged to before.
     applicant.role = "representative";
+    applicant.community = community._id;
     applicant.representativeInfo = {
       community: community._id,
       appointedAt: new Date(),
       isActive: true,
+      isVerifiedOfficial,
+      officialTitle: isVerifiedOfficial ? application.officialTitle : undefined,
     };
     await applicant.save();
   }
@@ -174,9 +225,19 @@ export const reviewApplication = asyncHandler(async (req, res) => {
       type: decision === "approved" ? "application_approved" : "application_rejected",
       message:
         decision === "approved"
-          ? `Your application was approved. You are now the representative of ${communityName}.${note}`
+          ? `Your application was approved. You are now the representative of ${communityName}${
+              grantedOfficialBadge ? " (verified official)" : ""
+            }.${note}`
           : `Your application${communityName ? ` for ${communityName}` : ""} was not approved.${note}`,
     });
+
+    for (const sibling of rejectedSiblings) {
+      await notifyUser({
+        recipient: sibling.applicant,
+        type: "application_rejected",
+        message: `Your application for ${communityName} was not approved. Another applicant was selected to represent it.`,
+      });
+    }
   } catch (err) {
     console.error(`[notify] application ${application._id}: ${err.message}`);
   }
@@ -197,19 +258,13 @@ export const removeRepresentative = asyncHandler(async (req, res) => {
     return errorResponse(res, "Invalid user id", 400);
   }
 
-  const user = await User.findById(req.params.userId);
+  const { user, error, status } = await revokeRepresentativeStatus(
+    req.params.userId,
+  );
 
-  if (!user) {
-    return errorResponse(res, "User not found", 404);
+  if (error) {
+    return errorResponse(res, error, status);
   }
-
-  if (user.role !== "representative") {
-    return errorResponse(res, "This user is not a representative", 400);
-  }
-
-  user.role = "citizen";
-  user.representativeInfo.isActive = false;
-  await user.save();
 
   res.json({
     message: "Representative status revoked",

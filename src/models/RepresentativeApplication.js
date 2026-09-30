@@ -67,6 +67,23 @@ const applicationSchema = new mongoose.Schema(
       default: 0,
     },
 
+    // Optional second tier: the applicant claims an actual local
+    // government/council position, on top of the regular representative
+    // application. An admin reviews officialDocumentUrl and decides
+    // whether to grant the "Verified Official" badge on approval — see
+    // reviewApplication in representativeApplicationReview.controller.js.
+    claimsOfficialStatus: {
+      type: Boolean,
+      default: false,
+    },
+
+    officialTitle: {
+      type: String,
+      trim: true,
+    },
+
+    officialDocumentUrl: String,
+
     status: {
       type: String,
       enum: ["pending", "approved", "rejected"],

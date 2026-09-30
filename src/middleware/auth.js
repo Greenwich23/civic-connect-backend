@@ -49,13 +49,22 @@ export const protect = async (req, res, next) => {
 
 // Generic role-based access middleware — pass one or more allowed roles
 // e.g. authorize("admin"), authorize("representative"), authorize("admin", "representative")
+//
+// "super_admin" is a strict superset of "admin" — anywhere a route accepts
+// "admin", a super_admin is let through too, without every admin route
+// needing to list both roles explicitly. Routes that must be super_admin-only
+// (managing other admin accounts) simply never list "admin" as allowed.
 export const authorize = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
       return errorResponse(res, "Not authenticated. Please log in.", 401);
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const isAllowed =
+      allowedRoles.includes(req.user.role) ||
+      (req.user.role === "super_admin" && allowedRoles.includes("admin"));
+
+    if (!isAllowed) {
       return errorResponse(
         res,
         "Access denied. Insufficient permissions.",

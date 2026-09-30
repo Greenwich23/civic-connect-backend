@@ -8,7 +8,7 @@ const requireAdmin = (req, res, next) => {
     return errorResponse(res, "Not authenticated", 401);
   }
 
-  if (req.user.role !== "admin") {
+  if (req.user.role !== "admin" && req.user.role !== "super_admin") {
     return errorResponse(res, "Access denied. Admin privileges required.", 403);
   }
 

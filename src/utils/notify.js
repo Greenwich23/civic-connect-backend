@@ -8,6 +8,7 @@ export const notifyUser = async ({
   type,
   message,
   relatedIssue,
+  relatedConversation,
 }) => {
   if (!recipient) return;
 
@@ -16,6 +17,7 @@ export const notifyUser = async ({
     type,
     message,
     relatedIssue,
+    relatedConversation,
   });
 };
 

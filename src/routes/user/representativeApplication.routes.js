@@ -11,6 +11,7 @@ router.post(
   uploadRepresentativeDocs.fields([
     { name: "passportPhoto", maxCount: 1 },
     { name: "proofOfResidence", maxCount: 1 },
+    { name: "officialDocument", maxCount: 1 },
   ]),
   applicationController.applyForRepresentative,
 );

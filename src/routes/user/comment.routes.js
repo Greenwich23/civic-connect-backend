@@ -9,6 +9,8 @@ import {
   updateComment,
   deleteComment,
   reportComment,
+  pinComment,
+  unpinComment,
 } from "../../controllers/user/comment.controller.js";
 
 import protect from "../../middleware/auth.js";
@@ -53,6 +55,18 @@ router.post("/comments/:commentId/replies", protect, replyToComment);
 
 // Get replies
 router.get("/comments/:commentId/replies", protect, getCommentReplies);
+
+/*
+=========================================================
+PINNING (representative announcements)
+=========================================================
+*/
+
+// Pin a comment
+router.post("/comments/:commentId/pin", protect, pinComment);
+
+// Unpin a comment
+router.delete("/comments/:commentId/pin", protect, unpinComment);
 
 /*
 =========================================================

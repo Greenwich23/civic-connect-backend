@@ -18,6 +18,10 @@ const notificationSchema = new mongoose.Schema(
         "issue_resolved",
         "application_approved",
         "application_rejected",
+        "new_message",
+        "resolution_disputed",
+        "representative_report_reviewed",
+        "representative_removed",
       ],
       required: true,
     },
@@ -30,6 +34,11 @@ const notificationSchema = new mongoose.Schema(
     relatedIssue: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Issue",
+    },
+
+    relatedConversation: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Conversation",
     },
 
     isRead: {

@@ -79,6 +79,16 @@ const issueSchema = new mongoose.Schema(
     },
 
     resolvedAt: Date,
+
+    // Admin-only moderation (e.g. spam or duplicate reports) — a hidden
+    // issue disappears from every citizen-facing screen, but stays visible
+    // and restorable in the admin panel. There's no citizen "report an
+    // issue" flow (unlike Comments), so only an admin sets this.
+    moderationStatus: {
+      type: String,
+      enum: ["visible", "hidden"],
+      default: "visible",
+    },
   },
   { timestamps: true },
 );

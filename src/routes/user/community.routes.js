@@ -5,6 +5,7 @@ import { protect } from "../../middleware/auth.js";
 const router = express.Router();
 
 router.get("/", communityController.getAllCommunities);
+router.get("/:id/profile", communityController.getCommunityProfile);
 router.get("/active", communityController.getActiveCommunities);
 router.get("/joinable", communityController.getJoinableCommunities);
 router.get("/check", communityController.checkCommunityNameExists);

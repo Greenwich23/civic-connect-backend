@@ -1,6 +1,7 @@
 import Issue from "../../models/Issues.js";
 import Comment from "../../models/Comments.js";
 import Proposal from "../../models/Proposal.js";
+import Community from "../../models/Community.js";
 import asyncHandler from "../../utils/asyncHandler.js";
 import { errorResponse } from "../../utils/apiResponse.js";
 
@@ -49,13 +50,30 @@ export const createIssue = asyncHandler(async (req, res) => {
 // @desc   Get all issues with filters, search, and sorting
 // @route  GET /api/issues
 export const getAllIssues = asyncHandler(async (req, res) => {
-  const { search, category, status, community, sort } = req.query;
+  const { search, category, status, community, city, scope, sort } =
+    req.query;
 
-  const filter = {};
+  const filter = { moderationStatus: { $ne: "hidden" } };
 
   if (category) filter.category = category;
   if (status) filter.status = status;
-  if (community) filter.community = community;
+
+  if (community) {
+    // An explicit community always wins — e.g. "My Community", or a
+    // community's own profile page.
+    filter.community = community;
+  } else if (city && (scope === "nearby" || scope === "city")) {
+    // "nearby" and "city" both currently mean every community under the
+    // same city anchor — there's no location data to tell them apart yet
+    // (see Community/Issue models), so they resolve to the same query.
+    // "all" (or no scope) is intentionally left unfiltered — nationwide.
+    const communitiesInCity = await Community.find({
+      parent: city,
+      level: "community",
+    }).select("_id");
+
+    filter.community = { $in: communitiesInCity.map((c) => c._id) };
+  }
 
   if (search) {
     filter.$or = [
@@ -86,7 +104,11 @@ export const getAllIssues = asyncHandler(async (req, res) => {
   }
 
   const issues = await Issue.find(filter)
-    .populate("community", "name")
+    .populate({
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    })
     .populate("reportedBy", "name")
     .sort(sortOption);
 
@@ -96,11 +118,16 @@ export const getAllIssues = asyncHandler(async (req, res) => {
 // @desc   Get a single issue by ID
 // @route  GET /api/issues/:id
 export const getIssueById = asyncHandler(async (req, res) => {
-  const issue = await Issue.findById(req.params.id)
-    .populate("community", "name")
+  const issue = await Issue.findOne({
+    _id: req.params.id,
+    moderationStatus: { $ne: "hidden" },
+  })
+    .populate({
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    })
     .populate("reportedBy", "name");
-
-  console.log(issue);
 
   if (!issue) {
     return errorResponse(res, "Issue not found", 404);
@@ -123,8 +150,15 @@ export const getIssueById = asyncHandler(async (req, res) => {
 // @desc   Get issues reported by the logged-in user
 // @route  GET /api/issues/mine
 export const getMyIssues = asyncHandler(async (req, res) => {
-  const issues = await Issue.find({ reportedBy: req.user._id })
-    .populate("community", "name")
+  const issues = await Issue.find({
+    reportedBy: req.user._id,
+    moderationStatus: { $ne: "hidden" },
+  })
+    .populate({
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    })
     .sort("-createdAt");
 
   res.json({ issues });
@@ -135,11 +169,15 @@ export const getMyIssues = asyncHandler(async (req, res) => {
 export const getTrendingIssues = asyncHandler(async (req, res) => {
   const { community, limit = 6 } = req.query;
 
-  const filter = {};
+  const filter = { moderationStatus: { $ne: "hidden" } };
   if (community) filter.community = community;
 
   const issues = await Issue.find(filter)
-    .populate("community", "name")
+    .populate({
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    })
     .sort("-supportCount -createdAt")
     .limit(Number(limit));
 
@@ -156,12 +194,17 @@ export const searchIssues = asyncHandler(async (req, res) => {
   }
 
   const issues = await Issue.find({
+    moderationStatus: { $ne: "hidden" },
     $or: [
       { title: { $regex: q, $options: "i" } },
       { description: { $regex: q, $options: "i" } },
     ],
   })
-    .populate("community", "name")
+    .populate({
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    })
     .sort("-createdAt");
 
   res.json({ issues });
@@ -193,7 +236,12 @@ export const unsaveIssue = asyncHandler(async (req, res) => {
 export const getSavedIssues = asyncHandler(async (req, res) => {
   const user = await req.user.populate({
     path: "savedIssues",
-    populate: { path: "community", select: "name" },
+    match: { moderationStatus: { $ne: "hidden" } },
+    populate: {
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    },
   });
 
   res.json({ issues: user.savedIssues });

@@ -1,7 +1,10 @@
 import Community from "../../models/Community.js";
 import User from "../../models/User.js";
+import Issue from "../../models/Issues.js";
+import RepresentativeApplication from "../../models/RepresentativeApplication.js";
 import asyncHandler from "../../utils/asyncHandler.js";
 import { errorResponse } from "../../utils/apiResponse.js";
+import { revokeRepresentativeStatus } from "../../utils/representativeActions.js";
 
 // @desc   Get all communities (optionally filter by level, status)
 // @route  GET /api/communities
@@ -115,6 +118,23 @@ export const joinCommunity = asyncHandler(async (req, res) => {
     return errorResponse(res, "communityId is required", 400);
   }
 
+  // A pending "found new community" or "represent existing" application
+  // implies a specific community they're waiting on — joining a different
+  // one in the meantime would contradict that, so it's blocked until the
+  // application is resolved (approved or rejected).
+  const pendingApplication = await RepresentativeApplication.findOne({
+    applicant: req.user._id,
+    status: "pending",
+  });
+
+  if (pendingApplication) {
+    return errorResponse(
+      res,
+      "You have a pending representative application. Resolve it before joining a different community.",
+      400,
+    );
+  }
+
   const community = await Community.findOne({
     _id: communityId,
     level: "community",
@@ -124,11 +144,37 @@ export const joinCommunity = asyncHandler(async (req, res) => {
     return errorResponse(res, "Community not found", 404);
   }
 
+  // A representative moving to a different community no longer qualifies to
+  // represent the one they're leaving — applying to represent a community
+  // already requires being a member of it (see applyForRepresentative), so
+  // stepping down here keeps that invariant true instead of leaving a
+  // "representative" who's no longer even a member.
+  if (req.user.role === "representative") {
+    const steppedDownCommunityId = req.user.representativeInfo?.community;
+
+    const { error, status } = await revokeRepresentativeStatus(req.user._id);
+    if (error) {
+      return errorResponse(res, error, status);
+    }
+
+    if (steppedDownCommunityId) {
+      await Community.findByIdAndUpdate(steppedDownCommunityId, {
+        status: "unrepresented",
+      });
+    }
+  }
+
   const user = await User.findByIdAndUpdate(
     req.user._id,
     { community: community._id },
     { new: true },
-  ).select("-password");
+  )
+    .select("-password")
+    .populate({
+      path: "community",
+      select: "name parent",
+      populate: { path: "parent", select: "name" },
+    });
 
   res.json({
     message: `You've joined ${community.name}`,
@@ -143,6 +189,21 @@ export const leaveCommunity = asyncHandler(async (req, res) => {
     return errorResponse(res, "You are not currently in a community", 400);
   }
 
+  if (req.user.role === "representative") {
+    const steppedDownCommunityId = req.user.representativeInfo?.community;
+
+    const { error, status } = await revokeRepresentativeStatus(req.user._id);
+    if (error) {
+      return errorResponse(res, error, status);
+    }
+
+    if (steppedDownCommunityId) {
+      await Community.findByIdAndUpdate(steppedDownCommunityId, {
+        status: "unrepresented",
+      });
+    }
+  }
+
   const user = await User.findByIdAndUpdate(
     req.user._id,
     { community: null },
@@ -152,5 +213,34 @@ export const leaveCommunity = asyncHandler(async (req, res) => {
   res.json({
     message: "You've left your community",
     user,
+  });
+});
+
+// @desc   Get full community profile: stats, current representative, recent activity
+// @route  GET /api/communities/:id/profile
+export const getCommunityProfile = asyncHandler(async (req, res) => {
+  const community = await Community.findById(req.params.id).populate(
+    "parent",
+    "name",
+  );
+  if (!community) {
+    return errorResponse(res, "Community not found", 404);
+  }
+
+  const [memberCount, issueCount, resolvedCount, representative] =
+    await Promise.all([
+      User.countDocuments({ community: community._id }),
+      Issue.countDocuments({ community: community._id }),
+      Issue.countDocuments({ community: community._id, status: "resolved" }),
+      User.findOne({
+        "representativeInfo.community": community._id,
+        "representativeInfo.isActive": true,
+      }).select("name avatarUrl representativeInfo"),
+    ]);
+
+  res.json({
+    community,
+    stats: { memberCount, issueCount, resolvedCount },
+    representative: representative || null,
   });
 });
