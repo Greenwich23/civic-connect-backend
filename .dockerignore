@@ -1,0 +1,100 @@
+# ==============================
+# Environment variables
+# ==============================
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+**/.env
+**/.env.*
+
+# ==============================
+# Dependencies
+# ==============================
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# ==============================
+# Build outputs
+# ==============================
+dist/
+build/
+**/dist/
+**/build/
+out/
+
+# ==============================
+# Logs
+# ==============================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================
+# Vite
+# ==============================
+.vite/
+*.local
+
+# ==============================
+# Testing / coverage
+# ==============================
+coverage/
+*.lcov
+.nyc_output
+
+# ==============================
+# Editor / IDE
+# ==============================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==============================
+# OS files
+# ==============================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ==============================
+# Uploads / local file storage (if any slip through before Cloudinary)
+# ==============================
+uploads/
+**/uploads/
+tmp/
+temp/
+
+# ==============================
+# Package manager files (optional — keep lockfiles usually, but ignore these)
+# ==============================
+.npm
+.eslintcache
+*.tsbuildinfo
+
+# ==============================
+# Misc
+# ==============================
+*.pem
+.vercel
+.netlify
