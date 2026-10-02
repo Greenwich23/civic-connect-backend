@@ -41,6 +41,7 @@ export const uploadAvatar = multer({ storage: avatarStorage });
 
 export const uploadIssueEvidence = multer({
   storage: issueEvidenceStorage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 5 },
 });
 
 export const uploadRepresentativeDocs = multer({

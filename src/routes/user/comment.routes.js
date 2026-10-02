@@ -11,6 +11,7 @@ import {
   reportComment,
   pinComment,
   unpinComment,
+  toggleCommentLike,
 } from "../../controllers/user/comment.controller.js";
 
 import protect from "../../middleware/auth.js";
@@ -67,6 +68,15 @@ router.post("/comments/:commentId/pin", protect, pinComment);
 
 // Unpin a comment
 router.delete("/comments/:commentId/pin", protect, unpinComment);
+
+/*
+=========================================================
+LIKES
+=========================================================
+*/
+
+// Like / unlike a comment
+router.post("/comments/:commentId/like", protect, toggleCommentLike);
 
 /*
 =========================================================

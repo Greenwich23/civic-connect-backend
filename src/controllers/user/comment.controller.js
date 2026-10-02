@@ -8,6 +8,19 @@ import {
   notifyManyUsers,
 } from "../../utils/notify.js";
 
+// Replaces the raw likes array (user ids) with what the UI needs: a total
+// and whether the current user has liked it.
+const withLikeInfo = (comment, userId) => {
+  const obj = comment.toObject ? comment.toObject() : comment;
+  const { likes = [], ...rest } = obj;
+
+  return {
+    ...rest,
+    likeCount: likes.length,
+    likedByMe: likes.some((id) => id.toString() === userId.toString()),
+  };
+};
+
 /**
  * =========================================================
  * CREATE / POST COMMENT
@@ -115,7 +128,7 @@ export const getIssueComments = asyncHandler(async (req, res) => {
     .sort({ isPinned: -1, createdAt: 1 }); // pinned announcement (if any) floats to the top
 
   res.status(200).json({
-    comments,
+    comments: comments.map((c) => withLikeInfo(c, req.user._id)),
   });
 });
 
@@ -233,7 +246,7 @@ export const getCommentReplies = asyncHandler(async (req, res) => {
         moderationStatus: { $ne: "hidden" },
       });
 
-      return { ...reply.toObject(), replyCount };
+      return { ...withLikeInfo(reply, req.user._id), replyCount };
     }),
   );
 
@@ -490,5 +503,43 @@ export const unpinComment = asyncHandler(async (req, res) => {
   res.status(200).json({
     message: "Comment unpinned",
     comment,
+  });
+});
+
+/**
+ * =========================================================
+ * TOGGLE LIKE ON A COMMENT
+ * POST /api/comments/:commentId/like
+ *
+ * Likes the comment if the user hasn't yet, otherwise removes their like.
+ * =========================================================
+ */
+export const toggleCommentLike = asyncHandler(async (req, res) => {
+  const { commentId } = req.params;
+
+  const comment = await Comment.findOne({
+    _id: commentId,
+    moderationStatus: { $ne: "hidden" },
+  }).select("likes");
+
+  if (!comment) {
+    return errorResponse(res, "Comment not found", 404);
+  }
+
+  const alreadyLiked = comment.likes.some(
+    (id) => id.toString() === req.user._id.toString(),
+  );
+
+  const updated = await Comment.findByIdAndUpdate(
+    commentId,
+    alreadyLiked
+      ? { $pull: { likes: req.user._id } }
+      : { $addToSet: { likes: req.user._id } },
+    { new: true },
+  ).select("likes");
+
+  res.status(200).json({
+    liked: !alreadyLiked,
+    likeCount: updated.likes.length,
   });
 });

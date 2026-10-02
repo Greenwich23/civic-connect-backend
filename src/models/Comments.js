@@ -47,6 +47,15 @@ const commentSchema = new mongoose.Schema(
 
     pinnedAt: Date,
 
+    // Users who liked ("Helpful") this comment — one entry per user, so a
+    // like can be toggled off and can't be counted twice.
+    likes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
     // Reporting flags a comment for admin review (moderationStatus becomes
     // "flagged") but never hides it by itself — only an admin hiding it does.
     // reportReason/reportDetails hold the most recent report's context;

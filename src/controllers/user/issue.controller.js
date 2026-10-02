@@ -5,6 +5,22 @@ import Community from "../../models/Community.js";
 import asyncHandler from "../../utils/asyncHandler.js";
 import { errorResponse } from "../../utils/apiResponse.js";
 
+// Attach commentCount (comments + replies, same as getIssueById) to a list of
+// issues with a single aggregate instead of one count query per issue.
+const withCommentCounts = async (issues) => {
+  const ids = issues.filter(Boolean).map((i) => i._id);
+  const counts = await Comment.aggregate([
+    { $match: { issue: { $in: ids } } },
+    { $group: { _id: "$issue", count: { $sum: 1 } } },
+  ]);
+  const countById = new Map(counts.map((c) => [String(c._id), c.count]));
+
+  return issues.filter(Boolean).map((issue) => ({
+    ...issue.toObject(),
+    commentCount: countById.get(String(issue._id)) ?? 0,
+  }));
+};
+
 // @desc   Create a new issue — locked to the user's own home community
 // @route  POST /api/issues
 export const createIssue = asyncHandler(async (req, res) => {
@@ -89,7 +105,8 @@ export const getAllIssues = asyncHandler(async (req, res) => {
       sortOption = "-supportCount";
       break;
     case "most_discussed":
-      sortOption = "-commentCount";
+      // commentCount isn't stored on Issue — sorted after counting below.
+      sortOption = "-createdAt";
       break;
     case "resolved":
       filter.status = "resolved";
@@ -112,7 +129,12 @@ export const getAllIssues = asyncHandler(async (req, res) => {
     .populate("reportedBy", "name")
     .sort(sortOption);
 
-  res.json({ issues });
+  const result = await withCommentCounts(issues);
+  if (sort === "most_discussed") {
+    result.sort((a, b) => b.commentCount - a.commentCount);
+  }
+
+  res.json({ issues: result });
 });
 
 // @desc   Get a single issue by ID
@@ -161,7 +183,7 @@ export const getMyIssues = asyncHandler(async (req, res) => {
     })
     .sort("-createdAt");
 
-  res.json({ issues });
+  res.json({ issues: await withCommentCounts(issues) });
 });
 
 // @desc   Get trending issues — highest recent support/activity
@@ -181,7 +203,7 @@ export const getTrendingIssues = asyncHandler(async (req, res) => {
     .sort("-supportCount -createdAt")
     .limit(Number(limit));
 
-  res.json({ issues });
+  res.json({ issues: await withCommentCounts(issues) });
 });
 
 // @desc   Search issues by title/description
@@ -207,7 +229,7 @@ export const searchIssues = asyncHandler(async (req, res) => {
     })
     .sort("-createdAt");
 
-  res.json({ issues });
+  res.json({ issues: await withCommentCounts(issues) });
 });
 
 // @desc   Save/bookmark an issue
@@ -244,5 +266,5 @@ export const getSavedIssues = asyncHandler(async (req, res) => {
     },
   });
 
-  res.json({ issues: user.savedIssues });
+  res.json({ issues: await withCommentCounts(user.savedIssues) });
 });

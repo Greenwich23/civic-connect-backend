@@ -69,11 +69,7 @@ export const verifyOtp = asyncHandler(async (req, res) => {
   }
 
   if (!user.otpCode || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
-    return errorResponse(
-      res,
-      "This code has expired. Request a new one.",
-      400,
-    );
+    return errorResponse(res, "This code has expired. Request a new one.", 400);
   }
 
   if (user.otpCode !== otp) {
@@ -232,7 +228,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     user.resetPasswordExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await user.save();
 
-    const resetUrl = `${process.env.CUSTOMER_URL || "http://localhost:5173"}/reset-password?token=${token}`;
+    const resetUrl = `${process.env.CUSTOMER_URL || "https://civcpulse.netlify.app"}/reset-password?token=${token}`;
 
     await sendPasswordResetEmail({
       to: user.email,
